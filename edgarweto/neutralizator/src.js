@@ -35,7 +35,6 @@
       }
       ReplicantAnimation.constructor = ReplicantAnimation;
         
-      
       _.extend(ReplicantAnimation.prototype, {
 
         /**
@@ -61,7 +60,7 @@
         },
 
         /**
-         * @summary
+         * @summary Updates the animation.
          */
         animate: function (time) {
           this._animationStep++;
@@ -75,6 +74,9 @@
           }
         },
 
+        /**
+         * @summary Finishes the animation.
+         */
         finish: function () {
           var parent = this._grParent;
           _.each(this._sprites, function (u) {
@@ -90,11 +92,15 @@
           }
         },
 
+        /**
+         * @summary Sets the callback function to be called when the animation ends.
+         */
         onFinish: function (callback) {
           this._onFinished = callback;
         }
 
       });
+
 
       /**
        * @summary ReplicantCell
@@ -151,30 +157,17 @@
           this._updateCell();
         },
 
+        /**
+         * @summary Returns whether the cell has no electron or proton.
+         */
+        isFree: function () {
+          return this._value === 0;
+        },
+
         _updateSprite: function () {
           if (this._value === 1 || this._value === -1) {
             this._sprite = this._getNewSprite(this._value);
             this._grObject.addChild(this._sprite);
-          } else {
-
-            // // Draw a void cell
-            // var sprite = pzlpEngine2d.PIXI.Sprite.fromFrame('inactive');
-            // if (this._pxWidth > 0) {
-            //   var sRatio = sprite.height / sprite.width;
-            //   sprite.width = this._pxWidth;
-            //   sprite.height = sRatio * this._pxWidth;
-            // } else {
-            //   var sRatio = sprite.width / sprite.height;
-            //   sprite.width = sRatio * this._pxHeight;
-            //   sprite.height = this._pxHeight;
-            // }
-            // //sprite.anchor.x = 0.5;
-            // //sprite.anchor.y = 0.5;
-            // sprite.position.x = 0;
-            // sprite.position.y = 0;
-
-            // this._sprite = sprite;
-            // this._grObject.addChildAt(sprite, 0);
           }
         },
 
@@ -212,11 +205,7 @@
             //this._draw();
 
             // Connect
-            //this.mouseup = this.mouseupoutside = this.touchend = this.touchendoutside = this._onGestEnd.bind(this);
-            //this.mousedown = this.touchstart = this._onGestStart.bind(this);
             this._grObject.click = this._grObject.tap = this._onDistribute.bind(this);
-            //this.mousemove = this.touchmove = this._onGestUpdate.bind(this);
-
           } else {
             this._grObject.setInteractive(false);
             this._grObject.buttonMode = false;
@@ -229,6 +218,9 @@
           }
         },
 
+        /**
+         * @summary Main action of the game: when a valid cell is clicked, it is cloned and two animations are started.
+         */
         _onDistribute: function () {
 
           // First of all, finish current animations!
@@ -247,13 +239,11 @@
               animation.addCell(this._adjacents[0], this._getNewSprite(this._value), function () {
                 that._adjacents[0].addItem(1);
               });
-              //
             }
             if (this._adjacents[1]) {
               animation.addCell(this._adjacents[1], this._getNewSprite(this._value), function () {
                 that._adjacents[1].addItem(1);
               });
-              //this._adjacents[1].addItem(1);
             }
           } else if (this._value === -1) {//to bottom-left
             if (!this._adjacents[2] || !this._adjacents[3] || this._adjacents[2]._value === -1 || this._adjacents[3]._value === -1) {
@@ -264,30 +254,34 @@
               animation.addCell(this._adjacents[2], this._getNewSprite(this._value), function () {
                 that._adjacents[2].addItem(-1);
               });
-              //this._adjacents[2].addItem(-1);
             }
             if (this._adjacents[3]) {
               animation.addCell(this._adjacents[3], this._getNewSprite(this._value), function () {
                 that._adjacents[3].addItem(-1);
               });
-              //this._adjacents[3].addItem(-1);
             }
           }
 
+          // Save the animation
           this._animation = animation;
-
 
           // Update current cell
           this._value = 0;
           this._updateCell();
         },
 
+        /**
+         * @summary Changes the cell's state (TODO: should change the function name!)
+         */
         addItem: function (otherValue) {
 
           this._value += otherValue;
           this._updateCell();
         },
 
+        /**
+         * @summary Updates the cell's sprite.
+         */
         _updateCell: function () {
           if (this._sprite) {
             this._grObject.removeChild(this._sprite);
@@ -349,14 +343,9 @@
         path: '/pieces'
       }]);
 
-
-
       // After initializing viewport, we can init the player background texture:
-      //var bgImage = webRoot + '/assets/gamelib/images/sprites/douglas-engel/color-wheels-2/bg-color-wheels-puzzlopia-1.jpg';
       var bgImage = webRoot + '/assets/gamelib/textures/grads/grad-13.jpg';
       gameObjects.background = new pzlpEngine2d.Background(bgImage);
-
-      //gameObjects.background = new pzlpEngine2d.Background(pzlpEngine2d.ResourceLib.getPlayerBackgroundName(3));
 
       var PIXI = pzlpEngine2d.PIXI,
         camera = env.getCamera();
@@ -413,8 +402,7 @@
           }
         }
 
-
-        // Create 
+        // Create the interactive cells
         var pieces = [];
         for (i = 0; i < ROWS; i++) {
           for (j = 0; j < COLS; j++) {
@@ -424,6 +412,7 @@
           }
         }
         
+        // Initialize the cells:
         for (i = 0; i < ROWS; i++) {
           for (j = 0; j < COLS; j++) {
             var adjacents = [];
@@ -436,15 +425,13 @@
             adjacents[2] = (i < ROWS - 1) ? pieces[j + COLS * (i + 1)] : null;
             adjacents[3] = (j > 0) ? pieces[j - 1 + COLS * i] : null;
 
-            
-
-            var x = 0;
+            var cellValue = 0;
             if (i==7 && j==0) {
-              x = 1;
+              cellValue = 1;
             } else if (i==0 && j==7) {
-              x = -1;
+              cellValue = -1;
             }
-            pieces[j + COLS * i].defineShape(x, adjacents, pxWidth, pxHeight);
+            pieces[j + COLS * i].defineShape(cellValue, adjacents, pxWidth, pxHeight);
 
             var s = pieces[j + COLS * i].getShape();
             s.position.x = pxMarginX + pxWidth * j;
@@ -481,6 +468,25 @@
         }
       });
 
+      // Winning condition: all pieces have value 0.
+      var solved = true;
+      for (var i = 0, n = this._gameObjects.pieces.length; i < n; i++) {
+        var piece = this._gameObjects.pieces[i];
+        if (!piece.isFree()) {
+          solved = false;
+          break;
+        }
+      }
+      if (solved) {
+        this.finishAllAnimations();
+
+        var cmdList = clientGameApp.getCmdList();
+
+        clientGameApp.gameOver({
+          solved: true,
+          solution: cmdList
+        });
+      }
     };
   }
 
