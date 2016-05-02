@@ -163,6 +163,7 @@
 
         this._value = 0;
         this._adjacents = [];
+        this._createCommand = true;
       }
       ReplicantCell.constructor = ReplicantCell;
         
@@ -174,30 +175,14 @@
          */
         defineShape: function (value, adjancentCells, pxWidth, pxHeight) {
           this._value = value;
-          this._grObject = new pzlpEngine2d.PIXI.DisplayObjectContainer();
-
           this._pxWidth = pxWidth;
           this._pxHeight = pxHeight;
-
-          // var c = new pzlpEngine2d.PIXI.Graphics();
-          // c.lineStyle(2, 0xDDDDDD, 1);
-          // c.beginFill(0xEEEEEE);
-          // c.drawRect(0, 0, this._pxWidth, this._pxHeight);
-          // this._grObject.addChildAt(c, 0);
-          // this._background = c;
-
-          // var text = new pzlpEngine2d.PIXI.Text(this._value, {font: "50px Arial", fill: "black"});
-          // text.position.x = 0.5 * pxWidth;
-          // text.position.y = 0.5 * pxHeight;
-          // text.anchor.x = 0.5;
-          // text.anchor.y = 0.5;
-          // this._grObject.addChild(text);
-          // this._text = text;
-
-          this._updateSprite();
-
           this._adjacents = adjancentCells;
 
+          this._grObject = new pzlpEngine2d.PIXI.DisplayObjectContainer();
+
+          this._updateSprite();
+          
           this.enable(true);
           this._updateCell();
         },
@@ -272,12 +257,14 @@
           // First of all, finish current animations!
           this._onFinishAnimations();
 
-          var cmd = new pzlpEngine2d.NeutralizatorCmd({
-            value: this._value,
-            pieceId: this.getId(),
-            intentClone: true
-          });
-          this._currentCmd = cmd;
+          if (this._createCommand) {
+            var cmd = new pzlpEngine2d.NeutralizatorCmd({
+              value: this._value,
+              pieceId: this.getId(),
+              intentClone: true
+            });
+            this._currentCmd = cmd;
+          }
 
           var animation = new ReplicantAnimation(this._grObject, this._sprite.x, this._sprite.y, this._pxWidth, this._pxHeight);
           animation.onFinish(this._onAnimationFinished.bind(this));
@@ -362,7 +349,91 @@
 
         getAnimation: function () {
           return this._animation;
-        }
+        },
+
+        /**
+         * @summary Clone current cell and move.
+         */
+        onDistribute: function (callback) {
+          this._createCommand = false;
+          this._onDistribute();
+          this._createCommand = true;
+          this._animation.finish();
+          if (callback) {
+            callback(true);//true means 're-done'
+          }
+        },
+
+        /**
+         * @summary Undo last clone of current cell.
+         */
+        onUndoDistribute: function (value, callback) {
+          
+
+          // First of all, finish current animations!
+          this._onFinishAnimations();
+
+          clientGameApp.startTransition();
+
+
+          // var cmd = new pzlpEngine2d.NeutralizatorCmd({
+          //   value: this._value,
+          //   pieceId: this.getId(),
+          //   intentClone: false
+          // });
+          // this._currentCmd = cmd;
+
+          // Undo for current cell
+          this._value = value;
+          this._updateCell();
+
+          // Then undo for adjacent cells:
+          var that = this;//EEEPP!!
+          if (this._value === 1) {//to top-right
+            for (var h = 0; h < 2; h++) {
+              var adj = this._adjacents[h];
+              if (adj) {
+                if (adj._value === 0) {
+                  adj._value = -1;
+                  adj._updateCell();
+                } else if (adj._value === 1) {
+                  adj._value = 0;
+                  adj._updateCell();
+                } else {
+                  console.error("[::onUndoDistribute] Invalid state!");
+                }
+              }
+            }
+          } else if (this._value === -1) {//to bottom-left
+            for (var h = 0; h < 2; h++) {
+              var adj = this._adjacents[h + 2];
+              if (adj) {
+                if (adj._value === 0) {
+                  adj._value = 1;
+                  adj._updateCell();
+                } else if (adj._value === -1) {
+                  adj._value = 0;
+                  adj._updateCell();
+                } else {
+                  console.error("[::onUndoDistribute] Invalid state!");
+                }
+              }
+            }
+          }
+
+          // Save the animation
+          this._animation = null;
+
+          // Sinces there is no animation, we need to call this directly.
+          this._onAnimationFinished();
+
+          // Re-enable machine!
+          clientGameApp.endTransition();
+
+          if (callback) {
+            callback(true);//means, ok, undone.
+          }
+        },
       });
 
       pzlpEngine2d.ReplicantCell = ReplicantCell;
@@ -463,11 +534,15 @@
 
         // Create the interactive cells
         var pieces = [];
+        clientGameApp._gameObjects._piecesById = {};
         for (i = 0; i < ROWS; i++) {
           for (j = 0; j < COLS; j++) {
-            pieces[j + COLS * i] = new pzlpEngine2d.ReplicantCell(j + COLS * i + 1);
+            var cell = new pzlpEngine2d.ReplicantCell(j + COLS * i + 1);
 
-            pieces[j + COLS * i].onFinishAnimations(clientGameApp.finishAllAnimations.bind(clientGameApp));
+            pieces[j + COLS * i] = cell;
+            cell.onFinishAnimations(clientGameApp.finishAllAnimations.bind(clientGameApp));
+
+            clientGameApp._gameObjects._piecesById[cell.getId()] = cell;
           }
         }
         
@@ -500,6 +575,12 @@
         }
         clientGameApp._gameObjects.pieces = pieces;
 
+        
+
+        clientGameApp.getPiece = function (pieceId) {
+          return clientGameApp._gameObjects._piecesById[pieceId];
+        };
+
         // Ended!
         progressUpdate(0.95);
         callback({});
@@ -519,7 +600,32 @@
       });
     };
 
+    /**
+     * @summary Process undo/redo from command machine:
+     */
+    clientGameApp.movePiece = function (cmd, callback) {
+      var cmdData = cmd.getData(),
+        pieceId = cmdData.pieceId,
+        value = cmdData.value,
+        intentClone = cmdData.intentClone,
+        cellPiece = this.getPiece(pieceId);
 
+      if (cellPiece) {
+        if (intentClone) {//Redo
+          cellPiece.onDistribute(callback);
+        } else {//Undo
+          cellPiece.onUndoDistribute(value, callback);
+        }
+      } else {
+        // @ifdef DEBUG
+        console.error("[clientGameApp::movePiece] Piece " + pieceId + " not found!");
+        // @endif
+      }
+    };
+
+    /**
+     * @summary Main game loop.
+     */
     clientGameApp.gameUpdate = function (step, time) {
       _.each(this._gameObjects.pieces, function (piece) {
         var a = piece.getAnimation();
@@ -528,7 +634,7 @@
         }
       });
 
-      // Winning condition: all pieces have value 0.
+      // Winning condition: all cells have value 0.
       var solved = true;
       for (var i = 0, n = this._gameObjects.pieces.length; i < n; i++) {
         var piece = this._gameObjects.pieces[i];
@@ -537,11 +643,12 @@
           break;
         }
       }
+
+      // If solved, end the game.
       if (solved) {
         this.finishAllAnimations();
 
         var cmdList = clientGameApp.getCmdList();
-
         clientGameApp.gameOver({
           solved: true,
           solution: cmdList
