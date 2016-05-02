@@ -15,6 +15,51 @@
   function buildGame(clientGameApp) {
 
     // ===============================================================================================
+    // NEUTRALIZATOR COMMAND
+    (function () {
+      var cmdMod_ = clientGameApp.module('command');
+
+      /**
+       * @summary Creates an instance of a command.
+       * data is an object containing value before the command, id of cell and intention (clone/unclone).
+       */
+      function NeutralizatorCmd(data) {
+        cmdMod_.Command.call(this, data);
+
+        /** @const */
+        this.OPPOSITE_EPSILON = 0.001;
+      }
+      NeutralizatorCmd.constructor = NeutralizatorCmd;
+      NeutralizatorCmd.prototype = Object.create(cmdMod_.Command.prototype);
+
+      _.extend(NeutralizatorCmd.prototype, {
+
+        isUndoable: function () {
+          return true;
+        },
+        isIdentity: function () {
+          return false;
+        },
+        isOpposite: function (cmd) {
+          return false;
+        },
+
+        /**
+         * @summary Creates a new command that is opposite the original.
+         */
+        getReversed: function () {
+          return new NeutralizatorCmd({
+            value: this._data.value,
+            pieceId: this._data.pieceId,
+            intentClone: !this._data.intentClone
+          });
+        }
+      });
+
+      pzlpEngine2d.NeutralizatorCmd = NeutralizatorCmd;
+    }());
+
+    // ===============================================================================================
     // CELL CLASS
     (function () {
 
@@ -222,9 +267,17 @@
          * @summary Main action of the game: when a valid cell is clicked, it is cloned and two animations are started.
          */
         _onDistribute: function () {
+          clientGameApp.startTransition();
 
           // First of all, finish current animations!
           this._onFinishAnimations();
+
+          var cmd = new pzlpEngine2d.NeutralizatorCmd({
+            value: this._value,
+            pieceId: this.getId(),
+            intentClone: true
+          });
+          this._currentCmd = cmd;
 
           var animation = new ReplicantAnimation(this._grObject, this._sprite.x, this._sprite.y, this._pxWidth, this._pxHeight);
           animation.onFinish(this._onAnimationFinished.bind(this));
@@ -292,6 +345,12 @@
 
         _onAnimationFinished: function () {
           this._animation = null;
+          
+          if (this._currentCmd) {
+            clientGameApp.addCommand(this._currentCmd);
+            clientGameApp.endTransition();
+            this._currentCmd = null;
+          }
         },
 
         /**
@@ -355,8 +414,8 @@
         frameMarginX = 1,
         frameMarginY = 1;
 
-        var ROWS = 8,
-          COLS = 8;
+        var ROWS = 4,
+          COLS = 4;
 
       var frameWidth = COLS * cellSize + 2 * frameMarginX,
         frameHeight = ROWS * cellSize + 2 * frameMarginY;
@@ -426,9 +485,9 @@
             adjacents[3] = (j > 0) ? pieces[j - 1 + COLS * i] : null;
 
             var cellValue = 0;
-            if (i==7 && j==0) {
+            if (i==(ROWS-1) && j==0) {
               cellValue = 1;
-            } else if (i==0 && j==7) {
+            } else if (i==0 && j==(COLS-1)) {
               cellValue = -1;
             }
             pieces[j + COLS * i].defineShape(cellValue, adjacents, pxWidth, pxHeight);
@@ -459,6 +518,7 @@
         }
       });
     };
+
 
     clientGameApp.gameUpdate = function (step, time) {
       _.each(this._gameObjects.pieces, function (piece) {
