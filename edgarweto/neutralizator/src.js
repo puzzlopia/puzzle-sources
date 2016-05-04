@@ -24,13 +24,10 @@
 
       /**
        * @summary Creates an instance of a command.
-       * data is an object containing value before the command, id of cell and intention (clone/unclone).
+       * @param {object} data An object containing definition of command (id of cell, value and intention (clone/unclone)).
        */
       function NeutralizatorCmd(data) {
         cmdMod_.Command.call(this, data);
-
-        /** @const */
-        this.OPPOSITE_EPSILON = 0.001;
       }
       NeutralizatorCmd.constructor = NeutralizatorCmd;
       NeutralizatorCmd.prototype = Object.create(cmdMod_.Command.prototype);
@@ -48,7 +45,7 @@
         },
 
         /**
-         * @summary Creates a new command that is opposite the original.
+         * @summary Creates a new command that is opposite the original (this).
          */
         getReversed: function () {
           return new NeutralizatorCmd({
@@ -63,15 +60,15 @@
     }());
 
     // ===============================================================================================
-    // CELL CLASS
+    // REPLICANTANIMATION
     (function () {
 
       /**
        * @summary ReplicantAnimation
        */
-      function ReplicantAnimation(parent, pxX, pxY, pxWidth, pxHeight) {
-        this._pxX = pxX;
-        this._pxY = pxY;
+      function ReplicantAnimation(parent, pxWidth, pxHeight) {
+        // this._pxX = pxX;
+        // this._pxY = pxY;
         this._pxWidth = pxWidth;
         this._pxHeight = pxHeight;
 
@@ -351,7 +348,8 @@
             this._currentCmd = cmd;
           }
 
-          var animation = new ReplicantAnimation(this._grObject, this._sprite.x, this._sprite.y, this._pxWidth, this._pxHeight);
+          //var animation = new ReplicantAnimation(this._grObject, this._sprite.x, this._sprite.y, this._pxWidth, this._pxHeight);
+          var animation = new ReplicantAnimation(this._grObject, this._pxWidth, this._pxHeight);
           animation.onFinish(this._onAnimationFinished.bind(this));
 
           if (this._value === 1) {//to top-right
@@ -668,20 +666,9 @@
         for (i = 0; i < ROWS; i++) {
           for (j = 0; j < COLS; j++) {
             var c = new pzlpEngine2d.PIXI.Graphics();
-            //c.lineStyle(2, 0x011627, 1);
-            //c.beginFill(0xFDFFFC);
-
             c.lineStyle(4, 0x011627, 0.25);
             c.drawRect(0, 0, pxWidth, pxHeight);
-            //c.lineStyle(2, 0x011627, 0.5);
-            //c.drawRect(0, 0, pxWidth, pxHeight);
-            //c.lineStyle(1, 0x011627, 1);
-            //c.drawRect(0, 0, pxWidth, pxHeight);
-
-            //c.blendMode = pzlpEngine2d.PIXI.blendModes.SCREEN;
-            //c.blendMode = pzlpEngine2d.PIXI.blendModes.OVERLAY;
             
-
             c.position.x = pxMarginX + pxWidth * j;
             c.position.y = pxMarginY + pxHeight * i;
             frameContainer.addChild(c);
@@ -704,8 +691,6 @@
             pieces[j + COLS * i] = cell;
             cell.onFinishAnimations(clientGameApp.finishAllAnimations.bind(clientGameApp));
 
-            var variation = Math.floor(1 + 3.5 * Math.random());
-            //console.log("Variation sound:", variation);
             cell.bindSound('piecesFused', 'ui_sound09' + (Math.random() > 0.33 ? ((Math.random() > 0.33 ? 6 : 5)) : 4));
             cell.bindSound('pieceAdded', 'ui_sound0114');
 
@@ -732,6 +717,13 @@
             } else if (i==0 && j==(COLS-1)) {
               cellValue = -1;
             }
+
+            // // Variation: add corner particles
+            // if ((i - j) > ROWS - 3) {
+            //   cellValue = 1;
+            // } else if ((j - i) > ROWS - 3) {
+            //   cellValue = -1;
+            // }
             pieces[j + COLS * i].defineShape(cellValue, adjacents, pxWidth, pxHeight);
 
             var s = pieces[j + COLS * i].getShape();
