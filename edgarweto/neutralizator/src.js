@@ -9,6 +9,9 @@
     clientBuildGame: buildGame
   });
 
+  /** @const */
+  var SOUND_FUSION_VOLUME = 0.8;
+
   /**
    * @summary Function called when there exists an instance of the game.
    */
@@ -146,6 +149,86 @@
 
       });
 
+      /**
+       * @summary AnnihilationAnimation
+       */
+      function AnnihilationAnimation(cell) {
+
+        this._animationStep = 0;
+        this._MAX_STEPS = 20;
+
+        this._rings = null;
+        this._grParent = cell.getShape();
+        this._pxMaxRadius = 0.5 * cell._pxWidth;
+
+        this._init();
+      }
+      AnnihilationAnimation.constructor = AnnihilationAnimation;
+        
+      _.extend(AnnihilationAnimation.prototype, {
+
+        /**
+         * @summary: adds an adjacent cell as a destination of a temporal sprite given by type 'value'.
+         */
+        _init: function () {
+          this._rings = [];
+          this._rings[0] = new pzlpEngine2d.PIXI.Graphics();
+          this._rings[0].lineStyle(3, 0xFF9F1C, 1);
+          this._rings[0].drawCircle(this._pxMaxRadius, this._pxMaxRadius, 0);          
+          this._rings[0].blendMode = pzlpEngine2d.PIXI.blendModes.SCREEN;
+
+          this._rings[1] = new pzlpEngine2d.PIXI.Graphics();
+          this._rings[1].lineStyle(3, 0xFF9F1C, 1);
+          this._rings[1].drawCircle(this._pxMaxRadius, this._pxMaxRadius, 0);
+          this._rings[1].blendMode = pzlpEngine2d.PIXI.blendModes.SCREEN;
+
+          this._grParent.addChild(this._rings[0]);
+          this._grParent.addChild(this._rings[1]);
+        },
+
+        /**
+         * @summary Updates the animation.
+         */
+        animate: function (time) {
+          this._animationStep++;
+          if (this._animationStep < this._MAX_STEPS) {
+            this._rings[0].clear();
+            this._rings[1].clear();
+            
+            var factor = this._animationStep / this._MAX_STEPS,
+              factorSqrt = Math.sqrt(factor),
+              factorSqrtAux = Math.sqrt(0.5 * factor);
+
+            this._rings[0].lineStyle(0.15 * this._pxMaxRadius, 0xFF9F1C, 1 - factor);
+            this._rings[0].drawCircle(this._pxMaxRadius, this._pxMaxRadius, (1 + factorSqrt) * factorSqrt * this._pxMaxRadius);
+            //this._rings[0].drawCircle(this._pxMaxRadius, this._pxMaxRadius, (1 - factorSqrt) * factorSqrt * this._pxMaxRadius);
+
+            var factor2 = 0.75 * factor
+            this._rings[1].lineStyle(0.1 * this._pxMaxRadius, 0xFF9F1C, 1 - factor2 * factor2);
+
+            this._rings[1].drawCircle(this._pxMaxRadius, this._pxMaxRadius, (1 + factorSqrtAux) * factorSqrtAux * this._pxMaxRadius);
+          } else {
+            this.finish();
+          }
+        },
+
+        /**
+         * @summary Finishes the animation.
+         */
+        finish: function () {
+          if (this._rings) {
+            this._grParent.removeChild(this._rings[0]);
+            this._grParent.removeChild(this._rings[1]);
+            this._rings = null;
+          }
+        },
+
+        finished: function () {
+          return this._rings === null;
+        }
+
+      });
+
 
       /**
        * @summary ReplicantCell
@@ -164,6 +247,8 @@
         this._value = 0;
         this._adjacents = [];
         this._createCommand = true;
+        this._animation = null;
+        this._decorativeAnimations = [];//Animations we don't need to finish prematurely
       }
       ReplicantCell.constructor = ReplicantCell;
         
@@ -206,7 +291,7 @@
          */
         _getNewSprite: function (value) {
           if (this._value === 1 || this._value === -1) {
-            var sprite = pzlpEngine2d.PIXI.Sprite.fromFrame(this._value === 1 ? 'proton' : 'electron');
+            var sprite = pzlpEngine2d.PIXI.Sprite.fromFrame(this._value === 1 ? 'proton-2' : 'electron-2');
             if (this._pxWidth > 0) {
               var sRatio = sprite.height / sprite.width;
               sprite.width = 0.8 * this._pxWidth;
@@ -269,36 +354,53 @@
           var animation = new ReplicantAnimation(this._grObject, this._sprite.x, this._sprite.y, this._pxWidth, this._pxHeight);
           animation.onFinish(this._onAnimationFinished.bind(this));
 
-          var that = this;//EEEPP!!
           if (this._value === 1) {//to top-right
             if (!this._adjacents[0] || !this._adjacents[1] || this._adjacents[0]._value === 1 || this._adjacents[1]._value === 1) {
+              
+              // Command is not valid movement.
+              this._currentCmd = null;
+              clientGameApp.endTransition();
               return;
             }
 
+            // Ok, movement is valid
+            this.playSound('pieceAdded', SOUND_FUSION_VOLUME);
+
             if (this._adjacents[0]) {
-              animation.addCell(this._adjacents[0], this._getNewSprite(this._value), function () {
-                that._adjacents[0].addItem(1);
-              });
+              if (this._adjacents[0]._value) {
+                this.playSound('piecesFused', SOUND_FUSION_VOLUME);
+              }
+              animation.addCell(this._adjacents[0], this._getNewSprite(this._value), this._onEndCloning.bind(this, 0, 1));
             }
             if (this._adjacents[1]) {
-              animation.addCell(this._adjacents[1], this._getNewSprite(this._value), function () {
-                that._adjacents[1].addItem(1);
-              });
+              if (this._adjacents[1]._value) {
+                this.playSound('piecesFused', SOUND_FUSION_VOLUME);
+              }
+              animation.addCell(this._adjacents[1], this._getNewSprite(this._value), this._onEndCloning.bind(this, 1, 1));
             }
           } else if (this._value === -1) {//to bottom-left
             if (!this._adjacents[2] || !this._adjacents[3] || this._adjacents[2]._value === -1 || this._adjacents[3]._value === -1) {
+
+              // Command is not valid movement.
+              this._currentCmd = null;
+              clientGameApp.endTransition();
               return;
             }
+            
+            // Ok, movement is valid
+            this.playSound('pieceAdded', SOUND_FUSION_VOLUME);
 
             if (this._adjacents[2]) {
-              animation.addCell(this._adjacents[2], this._getNewSprite(this._value), function () {
-                that._adjacents[2].addItem(-1);
-              });
+              if (this._adjacents[2]._value) {
+                this.playSound('piecesFused', SOUND_FUSION_VOLUME);
+              }
+              animation.addCell(this._adjacents[2], this._getNewSprite(this._value), this._onEndCloning.bind(this, 2, -1));
             }
             if (this._adjacents[3]) {
-              animation.addCell(this._adjacents[3], this._getNewSprite(this._value), function () {
-                that._adjacents[3].addItem(-1);
-              });
+              if (this._adjacents[3]._value) {
+                this.playSound('piecesFused', SOUND_FUSION_VOLUME);
+              }
+              animation.addCell(this._adjacents[3], this._getNewSprite(this._value), this._onEndCloning.bind(this, 3, -1));
             }
           }
 
@@ -328,6 +430,19 @@
             this._sprite = null;
           }
           this._updateSprite();
+        },
+
+        /**
+         *
+         */
+        _onEndCloning: function (index, value) {
+          this._adjacents[index].addItem(value);
+
+          // If anihilated
+          if (this._adjacents[index]._value === 0) {
+            var annihilation = new AnnihilationAnimation(this._adjacents[index]);
+            this._decorativeAnimations.push(annihilation);
+          }
         },
 
         _onAnimationFinished: function () {
@@ -369,26 +484,16 @@
          */
         onUndoDistribute: function (value, callback) {
           
-
           // First of all, finish current animations!
           this._onFinishAnimations();
 
           clientGameApp.startTransition();
-
-
-          // var cmd = new pzlpEngine2d.NeutralizatorCmd({
-          //   value: this._value,
-          //   pieceId: this.getId(),
-          //   intentClone: false
-          // });
-          // this._currentCmd = cmd;
 
           // Undo for current cell
           this._value = value;
           this._updateCell();
 
           // Then undo for adjacent cells:
-          var that = this;//EEEPP!!
           if (this._value === 1) {//to top-right
             for (var h = 0; h < 2; h++) {
               var adj = this._adjacents[h];
@@ -434,10 +539,40 @@
             callback(true);//means, ok, undone.
           }
         },
+
+        updateAnimations: function (time) {
+          if (this._animation) {
+            this._animation.animate(time);
+          }
+          _.each(this._decorativeAnimations, function (u) {
+            u.animate(time);
+          });
+
+          var countActive = 0;
+          for (var i = 0, n = this._decorativeAnimations.length; i < n; i++) {
+            if (this._decorativeAnimations[i].finished()) {
+              this._decorativeAnimations[i] = null;
+            } else {
+              countActive++;
+            }
+          }
+          if (countActive === 0) {
+            this._decorativeAnimations = [];
+          }
+        },
+
+        finishAllAnimations: function () {
+          if (this._animation) {
+            this._animation.finish();
+          }
+          _.each(this._decorativeAnimations, function (u) {
+            u.finish();
+          });
+          this._decorativeAnimations = [];
+        }
       });
 
       pzlpEngine2d.ReplicantCell = ReplicantCell;
-
     }());
 
     // ===============================================================================================
@@ -469,13 +604,26 @@
 
       // Require sounds...
       clientGameApp.requireSounds([{
-        name: 'piece_drag_3',
-        path: '/pieces'
+        name: 'ui_sound094',
+        path: '/puzzles/cloning'
+      }, {
+        name: 'ui_sound095',
+        path: '/puzzles/cloning'
+      }, {
+        name: 'ui_sound096',
+        path: '/puzzles/cloning'
+      }, {
+        name: 'ui_sound0114',
+        path: '/puzzles/cloning'
+      }]);
+
+      clientGameApp.requireMusic([{
+        name: 'evilmind_choose_the_right_one',
+        path: '/music/evilmind'
       }]);
 
       // After initializing viewport, we can init the player background texture:
-      var bgImage = webRoot + '/assets/gamelib/textures/grads/grad-13.jpg';
-      gameObjects.background = new pzlpEngine2d.Background(bgImage);
+      gameObjects.background = new pzlpEngine2d.Background('0xFDFFFC');
 
       var PIXI = pzlpEngine2d.PIXI,
         camera = env.getCamera();
@@ -485,8 +633,9 @@
         frameMarginX = 1,
         frameMarginY = 1;
 
-        var ROWS = 4,
-          COLS = 4;
+      // Board size
+      var ROWS = 8,
+        COLS = 8;
 
       var frameWidth = COLS * cellSize + 2 * frameMarginX,
         frameHeight = ROWS * cellSize + 2 * frameMarginY;
@@ -496,14 +645,12 @@
       camera.setViewport(-frameWidth/2, frameWidth/2, -frameHeight/2, frameHeight/2);
 
       // Load resources
-      var spritesheet = pzlpEngine2d.ResourceLib.getSpriteSheetPathName('edgar-weto/neutralizator');
+      var spritesheet = pzlpEngine2d.ResourceLib.getSpriteSheetPathName('edgar-weto/neutralizator-1');
 
       // Load resources
       var loader = new PIXI.AssetLoader([spritesheet]);
       loader.onComplete = function () {
         progressUpdate(0.35);
-
-        //clientGameApp._gameObjects.background = new pzlpEngine2d.Background(pzlpEngine2d.ResourceLib.getTextureName3('textures/backgrounds', 'inflicted.png'));
 
         var frameContainer = new PIXI.DisplayObjectContainer();
         camera.addChildAt(frameContainer, 0);
@@ -515,22 +662,37 @@
           pxMarginX = lengthToPixels(frameMarginX),
           pxMarginY = lengthToPixels(frameMarginY);
 
-
         var i, j;
 
         // Add background cells:
         for (i = 0; i < ROWS; i++) {
           for (j = 0; j < COLS; j++) {
             var c = new pzlpEngine2d.PIXI.Graphics();
-            c.lineStyle(2, 0xDDDDDD, 1);
-            c.beginFill(0xEEEEEE);
+            //c.lineStyle(2, 0x011627, 1);
+            //c.beginFill(0xFDFFFC);
+
+            c.lineStyle(4, 0x011627, 0.25);
             c.drawRect(0, 0, pxWidth, pxHeight);
+            //c.lineStyle(2, 0x011627, 0.5);
+            //c.drawRect(0, 0, pxWidth, pxHeight);
+            //c.lineStyle(1, 0x011627, 1);
+            //c.drawRect(0, 0, pxWidth, pxHeight);
+
+            //c.blendMode = pzlpEngine2d.PIXI.blendModes.SCREEN;
+            //c.blendMode = pzlpEngine2d.PIXI.blendModes.OVERLAY;
+            
 
             c.position.x = pxMarginX + pxWidth * j;
             c.position.y = pxMarginY + pxHeight * i;
             frameContainer.addChild(c);
           }
         }
+        // Compensate alpha accumulation inside grid:
+        var c = new pzlpEngine2d.PIXI.Graphics();
+        c.lineStyle(4, 0x011627, 0.25);
+        c.drawRect(pxMarginX, pxMarginY, COLS * pxWidth, ROWS * pxHeight);
+        frameContainer.addChild(c);
+
 
         // Create the interactive cells
         var pieces = [];
@@ -541,6 +703,11 @@
 
             pieces[j + COLS * i] = cell;
             cell.onFinishAnimations(clientGameApp.finishAllAnimations.bind(clientGameApp));
+
+            var variation = Math.floor(1 + 3.5 * Math.random());
+            //console.log("Variation sound:", variation);
+            cell.bindSound('piecesFused', 'ui_sound09' + (Math.random() > 0.33 ? ((Math.random() > 0.33 ? 6 : 5)) : 4));
+            cell.bindSound('pieceAdded', 'ui_sound0114');
 
             clientGameApp._gameObjects._piecesById[cell.getId()] = cell;
           }
@@ -575,8 +742,6 @@
         }
         clientGameApp._gameObjects.pieces = pieces;
 
-        
-
         clientGameApp.getPiece = function (pieceId) {
           return clientGameApp._gameObjects._piecesById[pieceId];
         };
@@ -593,10 +758,7 @@
 
     clientGameApp.finishAllAnimations = function () {
       _.each(this._gameObjects.pieces, function (piece) {
-        var a = piece.getAnimation();
-        if (a) {
-          a.finish();
-        }
+        piece.finishAllAnimations();
       });
     };
 
@@ -627,11 +789,30 @@
      * @summary Main game loop.
      */
     clientGameApp.gameUpdate = function (step, time) {
+
+      // Animations
       _.each(this._gameObjects.pieces, function (piece) {
-        var a = piece.getAnimation();
-        if (a) {
-          a.animate(time);
-        }
+        piece.updateAnimations(time);
+        // var a = piece.getAnimation();
+        // if (a) {
+        //   a.animate(time);
+        // }
+        // _.each(piece.getDecorativeAnimations(), function (u) {
+        //   u.animate(time);
+        // });
+
+        // var decAnimations = piece.getDecorativeAnimations(),
+        //   countActive = 0;
+        // for (var i = 0, n = decAnimations.length; i < n; i++) {
+        //   if (decAnimations[i].finished()) {
+        //     decAnimations[i] = null;
+        //   } else {
+        //     countActive++;
+        //   }
+        // }
+        // if (countActive === 0) {
+        //   piece.clearDecorativeAnimations();
+        // }
       });
 
       // Winning condition: all cells have value 0.
