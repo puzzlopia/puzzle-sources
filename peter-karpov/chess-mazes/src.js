@@ -18,26 +18,6 @@
     6  //pawn
   ];
 
-  var getPieceSprite = function (pieceTypeId) {
-    var color = pieceTypeId < 0 ? 'b' : 'w',
-      typeId = pieceTypeId < 0 ? -pieceTypeId : pieceTypeId;
-
-    if (typeId === 1) {
-      return color + "_King";
-    } else if (typeId === 2) {
-      return color + "_Queen";
-    } else if (typeId === 3) {
-      return color + "_Rook";
-    } else if (typeId === 4) {
-      return color + "_Bishop";
-    } else if (typeId === 5) {
-      return color + "_Knight";
-    } else if (typeId === 6) {
-      return color + "_Pawn";
-    }
-    console.error("[::getPieceSprite] Unknown piece type " + pieceTypeId);
-    return "";
-  };
   var CHESS_MAZE_OBJECTIVE_ID = 99;
 
   // PUZZLE DEFINITION
@@ -72,6 +52,30 @@
 
     player: 0xF4F25D,
     playerActive: 0xFFFFFF
+  };
+
+  /**
+   * @summary Returns the sprite name from piece id.
+   */
+  var getPieceSprite = function (pieceTypeId) {
+    var color = pieceTypeId < 0 ? 'b' : 'w',
+      typeId = pieceTypeId < 0 ? -pieceTypeId : pieceTypeId;
+
+    if (typeId === 1) {
+      return color + "_King";
+    } else if (typeId === 2) {
+      return color + "_Queen";
+    } else if (typeId === 3) {
+      return color + "_Rook";
+    } else if (typeId === 4) {
+      return color + "_Bishop";
+    } else if (typeId === 5) {
+      return color + "_Knight";
+    } else if (typeId === 6) {
+      return color + "_Pawn";
+    }
+    console.error("[::getPieceSprite] Unknown piece type " + pieceTypeId);
+    return "";
   };
 
   /**
@@ -616,7 +620,7 @@
     }());
 
     // ===============================================================================================
-    // NEUTRALIZATOR COMMAND
+    // Chess MAze COMMAND
     (function () {
       var cmdMod_ = clientGameApp.module('command');
 
@@ -624,13 +628,13 @@
        * @summary Creates an instance of a command.
        * @param {object} data An object containing definition of command (id of cell, value and intention (clone/unclone)).
        */
-      function NeutralizatorCmd(data) {
+      function ChessMazeCmd(data) {
         cmdMod_.Command.call(this, data);
       }
-      NeutralizatorCmd.constructor = NeutralizatorCmd;
-      NeutralizatorCmd.prototype = Object.create(cmdMod_.Command.prototype);
+      ChessMazeCmd.constructor = ChessMazeCmd;
+      ChessMazeCmd.prototype = Object.create(cmdMod_.Command.prototype);
 
-      _.extend(NeutralizatorCmd.prototype, {
+      _.extend(ChessMazeCmd.prototype, {
 
         isUndoable: function () {
           return true;
@@ -639,22 +643,22 @@
           return false;
         },
         isOpposite: function (cmd) {
-          return false;
+          return Math.abs(this._data.dRow + cmd._data.dRow) + Math.abs(this._data.dCol + cmd._data.dCol) === 0;
         },
 
         /**
          * @summary Creates a new command that is opposite the original (this).
          */
         getReversed: function () {
-          return new NeutralizatorCmd({
-            value: this._data.value,
+          return new ChessMazeCmd({
             pieceId: this._data.pieceId,
-            intentClone: !this._data.intentClone
+            dRow: -this._data.dRow,
+            dCol: -this._data.dCol
           });
         }
       });
 
-      pzlpEngine2d.NeutralizatorCmd = NeutralizatorCmd;
+      pzlpEngine2d.ChessMazeCmd = ChessMazeCmd;
     }());
 
     // ===============================================================================================
@@ -723,6 +727,31 @@
             cell: this.getCellAt(row, col)
           };
 
+          clientGameApp.startTransition();
+          this._currentCmd = new pzlpEngine2d.ChessMazeCmd({
+            pieceId: this._curPlayerPosition.cell.getPieceType(),
+            dRow: this._nextPlayerPosition.row - this._curPlayerPosition.row,
+            dCol: this._nextPlayerPosition.col - this._curPlayerPosition.col
+          });
+
+          this._onFinishPieceMov();
+        },
+
+        /**
+         * @summary Moves the player by relative changes. Used for undo/redo.
+         */
+        movePieceRelative: function (dRow, dCol) {
+          var row = this._curPlayerPosition.row + dRow,
+            col = this._curPlayerPosition.col + dCol;
+
+          this._nextPlayerPosition = {
+            row: row,
+            col: col,
+            cell: this.getCellAt(row, col)
+          };
+
+          clientGameApp.startTransition();
+          this._currentCmd = null;
           this._onFinishPieceMov();
         },
 
@@ -738,6 +767,11 @@
 
             this._curPlayerPosition = this._nextPlayerPosition;
             this._nextPlayerPosition = null;
+
+            if (this._currentCmd) {
+              clientGameApp.addCommand(this._currentCmd);
+            }
+            clientGameApp.endTransition();
           }
         },
 
@@ -918,27 +952,15 @@
      * @summary Process undo/redo from command machine:
      */
     clientGameApp.movePiece = function (cmd, callback) {
-      console.log("[clientGameApp::movePiece] not implemented");
-      if (callback) {
-        callback();
-      }
-      // var cmdData = cmd.getData(),
-      //   pieceId = cmdData.pieceId,
-      //   value = cmdData.value,
-      //   intentClone = cmdData.intentClone,
-      //   cellPiece = this.getPiece(pieceId);
+      var cmdData = cmd.getData(),
+        dRow = cmdData.dRow,
+        dCol = cmdData.dCol;
 
-      // if (cellPiece) {
-      //   if (intentClone) {//Redo
-      //     cellPiece.onDistribute(callback);
-      //   } else {//Undo
-      //     cellPiece.onUndoDistribute(value, callback);
-      //   }
-      // } else {
-      //   // @ifdef DEBUG
-      //   console.error("[clientGameApp::movePiece] Piece " + pieceId + " not found!");
-      //   // @endif
-      // }
+      this._gameObjects.chessMatrix.movePieceRelative(dRow, dCol);
+
+      if (callback) {
+        callback(true);
+      }
     };
 
     /**
