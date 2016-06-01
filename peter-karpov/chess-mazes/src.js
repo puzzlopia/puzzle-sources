@@ -9,6 +9,9 @@
     clientBuildGame: buildGame
   });
 
+  /**
+   * @summary Reference for piece types.
+   */
   var CHESS_PIECE_TYPES = [
     1, //king
     2, //queen
@@ -16,12 +19,13 @@
     4, //bishop
     5, //knight
     6  //pawn
-  ];
+  ],
+    CHESS_MAZE_OBJECTIVE_ID = 99;
 
-  var CHESS_MAZE_OBJECTIVE_ID = 99;
-
-  // PUZZLE DEFINITION
-  /** @const */
+  /**
+   * @summary Puzzle level definition using previous definitions for objective and piece types.
+   *  Also negative values means opponent pieces.
+   */
   var initialChessState = [
     [0, 0, 0, 99, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0, -5],
@@ -36,23 +40,42 @@
   /** @const */
   var SOUND_FUSION_VOLUME = 0.8;
 
+  // var COLOR_PALETTE = {
+  //   shadow: 0x333533,
+  //   shadowDark: 0x242423,
+  //   chessPulse: 0xFFFFFF,
+
+  //   chessboardLight: 0xE8EDDF,
+  //   chessboardDark: 0xCFDBD5,
+
+  //   opponent: 0xF4CC5D,
+  //   opponentActive: 0xF45D5F,
+
+  //   objective: 0x85F45D,
+  //   objectivePulse: 0xFFFFFF,
+
+  //   player: 0xF4F25D,
+  //   playerActive: 0xFFFFFF
+  // };
+
   var COLOR_PALETTE = {
-    shadow: 0x333533,
-    shadowDark: 0x242423,
+    shadow: 0x242329,
+    //shadowDark: 0x242423,
     chessPulse: 0xFFFFFF,
 
-    chessboardLight: 0xE8EDDF,
-    chessboardDark: 0xCFDBD5,
+    chessboardLight: 0xE10A3C,
+    chessboardDark: 0xDA365C,
 
-    opponent: 0xF4CC5D,
-    opponentActive: 0xF45D5F,
+    opponent: 0x242329,
+    opponentActive: 0x3A24A9,
 
-    objective: 0x85F45D,
+    objective: 0x86E500,
     objectivePulse: 0xFFFFFF,
 
-    player: 0xF4F25D,
+    player: 0x242329,
     playerActive: 0xFFFFFF
   };
+
 
   /**
    * @summary Returns the sprite name from piece id.
@@ -119,6 +142,9 @@
           this._active = true;
         },
 
+        /**
+         * @summary Acts like a pause.
+         */
         isActive: function () {
           return this._active;
         },
@@ -130,6 +156,9 @@
           this._toBeFinished = true;
         },
 
+        /**
+         * @summary Stops the animation and removes the graphics so that no more frames are drawn.
+         */
         kill: function () {
           this._parent.removeChild(this._grObject);
           this._active = false;
@@ -175,14 +204,14 @@
     }());
 
     // ===============================================================================================
-    // CHESS RULES
+    // CHESS RULES: implements several chess logics.
     (function () {
 
       var ChessRules = {};
       _.extend(ChessRules, {
 
         /**
-         * @summary Adds all positions of the row.
+         * @summary Adds all 'seen' positions in the row, from cur position (curRow, curCol).
          */
         addRows: function (positions, matrix, curRow, curCol) {
           var k,
@@ -206,7 +235,7 @@
         },
         
         /**
-         * @summary Adds all positions of the row.
+         * @summary Adds all 'seen' positions in the column, from cur position (curRow, curCol).
          */
         addCols: function (positions, matrix, curRow, curCol) {
           var k,
@@ -230,7 +259,7 @@
         },
 
         /**
-         * @summary Adds all positions from both diagonals.
+         * @summary Adds all 'seen' positions in both diagonals, from cur position (curRow, curCol).
          */
         addDiagonals: function (positions, matrix, curRow, curCol) {
           var k,
@@ -291,7 +320,9 @@
 
 
     // ===============================================================================================
-    // CHESS CELL: a clickable cell, generates event/cmd when clicked.
+    /** CHESS CELL: the interactive base cell used for the game. Placed at a constant row col position, it
+     *  can hold any chess piece or be an objective cell.
+     */
     (function () {
 
       function ChessCell() {
@@ -361,6 +392,9 @@
           this._animation.start();
         },
 
+        /**
+         * @summary Initializes the cell with an opponent piece.
+         */
         setOpponentPiece: function (id, spriteName) {
           this._grShape.clear();
           this._grShape.beginFill(COLOR_PALETTE.opponent, 1);
@@ -368,6 +402,7 @@
           this._pieceTypeId = id;
           this._isOpponent = true;
           this._sprite = this._spriteFromName(spriteName);
+          this._sprite.tint = COLOR_PALETTE.chessboardLight;
           this._grObject.addChild(this._sprite);
           this.enable(false);
 
@@ -379,7 +414,6 @@
           if (!this._isOpponent) {
             console.error("This cell has no enemy piece!");
           }
-
           if (this._animation) {
             this._animation.pulse();
           }
@@ -392,7 +426,7 @@
         },
 
         /**
-         * @summary Shows a visual alert coming from opposite capturing pieces.
+         * @summary Shows a visual alert coming from opposite capturing pieces (fixed set for each set).
          */
         pulseEnemies: function () {
           if (this._capturedBy.length) {
@@ -406,7 +440,7 @@
           this._pieceTypeId = id;
           this._sprite = this._spriteFromName(spriteName);
           this._grObject.addChild(this._sprite);
-          
+          this._sprite.tint = COLOR_PALETTE.chessboardLight;
           this._updateCell(true);
         },
 
@@ -620,7 +654,7 @@
     }());
 
     // ===============================================================================================
-    // Chess MAze COMMAND
+    // Chess Maze COMMAND
     (function () {
       var cmdMod_ = clientGameApp.module('command');
 
@@ -818,7 +852,6 @@
     }());
 
 
-
     // ===============================================================================================
     // ===============================================================================================
     // ===============================================================================================
@@ -861,10 +894,10 @@
       //   path: '/puzzles/cloning'
       // }]);
 
-      // clientGameApp.requireMusic([{
-      //   name: 'evilmind_choose_the_right_one',
-      //   path: '/music/evilmind'
-      // }]);
+      clientGameApp.requireMusic([{
+        name: 'evilmind_choose_the_right_one',
+        path: '/music/evilmind'
+      }]);
 
       // After initializing viewport, we can init the player background texture:
       gameObjects.background = new pzlpEngine2d.Background('' + COLOR_PALETTE.shadow);
@@ -971,7 +1004,7 @@
       // Animations
       this._gameObjects.chessMatrix.updateAnimations(time);
 
-      // Winning condition: all cells have value 0.
+      // Winning condition
       var solved = this._gameObjects.chessMatrix.isSolved();
 
       // If solved, end the game.
